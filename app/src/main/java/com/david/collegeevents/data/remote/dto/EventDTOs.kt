@@ -7,8 +7,10 @@ data class EventDTOs(
     @SerializedName("title") val title: String,
     @SerializedName("clubName") val clubName: String,
     @SerializedName("bannerUrl") val bannerUrl: String,
-    @SerializedName("date") val date: String,
-    @SerializedName("time") val time: String,
-    @SerializedName("venue") val venue: String,
-    @SerializedName("registrationBadge") val registrationBadge: String
+    @SerializedName("startDateTime") val startDateTime: String,
+    @SerializedName("endDateTime") val endDateTime: String,
+    @SerializedName("eventMode") val eventMode: String,
+    @SerializedName("venue") val venue: String?,
+    @SerializedName("registrationBadge") val registrationBadge: String,
+    @SerializedName("createdBy") val createdBy: String,
 )

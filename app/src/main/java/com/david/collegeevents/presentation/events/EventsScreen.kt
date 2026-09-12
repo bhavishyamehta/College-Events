@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.david.collegeevents.domain.model.EventSummary
+import com.david.collegeevents.utils.DateTimeValue
 import com.david.collegeevents.utils.TokenManager
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -45,13 +46,18 @@ fun EventsScreen(
     onEventClick: (String) -> Unit,
     onNavigateToCreate: () -> Unit,
     onNavigateToEdit: (String) -> Unit,
-    selectedEventId: String?,                     // 👈 Received from MainActivity
-    onSelectionChanged: (String?, String?) -> Unit, // 👈 Callback for MainActivity
+    selectedEventId: String?,                     // Received from MainActivity
+    onSelectionChanged: (String?, String?) -> Unit, // Callback for MainActivity
     viewModel: EventsViewModel = hiltViewModel()
 ) {
     val state = viewModel.state
     val context = LocalContext.current
-    val categories = listOf("All", "Technical", "Cultural", "Sports", "Robotics")
+
+    /* club wise filter */
+    //val categories = listOf("All", "Information Technology", "Cultural", "Sports", "Management", "Science", "Fine Arts", "Gender champions")
+
+    /* category wise filter */
+    val categories = listOf("All", "Technical", "Cultural", "Sports", "Workshop", "Seminar", "Competition", "Hackathon", "Fest", "Webinar", "Other")
 
     // Dynamic role check to verify long-press authorization locally
     val tokenManager = remember { TokenManager(context) }
@@ -330,7 +336,7 @@ fun EventFeedItem(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("${event.date} • ${event.time}", color = Color.Gray, fontSize = 13.sp)
+                    Text(DateTimeValue.fromIso(event.startDateTime).display(), color = Color.Gray, fontSize = 13.sp)
                 }
 
                 Row(
@@ -344,7 +350,11 @@ fun EventFeedItem(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(event.venue, color = Color.Gray, fontSize = 13.sp)
+                    Text(
+                        event.venue ?: if (event.eventMode == "ONLINE") "Online Event" else "Venue TBA",
+                        color = Color.Gray,
+                        fontSize = 13.sp
+                    )
                 }
             }
         }

@@ -5,8 +5,10 @@ data class EventSummary(
     val title: String,
     val clubName: String,
     val bannerUrl: String,
-    val date: String,
-    val time: String,
-    val venue: String,
-    val registrationBadge: String
+    val startDateTime: String,
+    val endDateTime: String,
+    val eventMode: String,
+    val venue: String?,
+    val registrationBadge: String,
+    val createdBy: String
 )

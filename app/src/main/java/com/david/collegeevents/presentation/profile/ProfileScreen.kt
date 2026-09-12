@@ -14,12 +14,17 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,14 +36,21 @@ import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.rememberLottieComposition
 import com.david.collegeevents.R
 import com.david.collegeevents.domain.model.EventSummary
+import com.david.collegeevents.utils.DateTimeValue
 import com.david.collegeevents.utils.NameAvatar
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     onLogoutDone: () -> Unit,
     onEventClick: (String) -> Unit,
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
+    var showLogoutSheet by remember { mutableStateOf(false) }
+    val logoutSheetState = rememberModalBottomSheetState()
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val state = viewModel.state
 
     val composition by rememberLottieComposition(
@@ -57,13 +69,6 @@ fun ProfileScreen(
             .fillMaxSize()
             .background(Color(0xFFF8F9FA))
     ) {
-        // Top Header ToolBar
-//        SmallTopAppBar(
-//            title = { Text("College Event", color = Color(0xFF1A237E), fontSize = 18.sp, fontWeight = FontWeight.Bold) },
-//            actions = { IconButton(onClick = {}) { Icon(Icons.Default.NotificationsNone, contentDescription = null) } },
-//            colors = TopAppBarDefaults.smallTopAppBarColors(containerColor = Color.White)
-//        )
-
         if (state.isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Color(0xFF1A237E))
@@ -77,6 +82,7 @@ fun ProfileScreen(
             }
         } else if (state.profileData != null) {
             val user = state.profileData
+            val isCreatorRole = state.userRole == "TEACHER" || state.userRole == "ADMIN"
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -123,7 +129,7 @@ fun ProfileScreen(
 //                                    .border(2.dp, Color.White, CircleShape),
 //                                contentScale = ContentScale.Crop
 //                            )
-                            Box(
+                            /*Box(
                                 modifier = Modifier
                                     .size(28.dp)
                                     .background(Color(0xFF1A237E), CircleShape)
@@ -137,7 +143,7 @@ fun ProfileScreen(
                                     tint = Color.White,
                                     modifier = Modifier.size(14.dp)
                                 )
-                            }
+                            }*/
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))
@@ -201,7 +207,7 @@ fun ProfileScreen(
                     }
                 }
 
-                // My Registrations Header row
+                // My Registrations / My Events Header row
                 item {
                     Row(
                         modifier = Modifier
@@ -211,12 +217,14 @@ fun ProfileScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "My Registrations",
+                            text = if (isCreatorRole) "My Events" else "My Registrations",   // ✅ conditional
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF111827)
                         )
-                        if (user.registeredEvents.isNotEmpty()) {
+                        val listToCheck =
+                            if (isCreatorRole) state.createdEvents else user.registeredEvents
+                        if (listToCheck.isNotEmpty()) {
                             Text(
                                 text = "View All",
                                 fontSize = 13.sp,
@@ -227,8 +235,21 @@ fun ProfileScreen(
                     }
                 }
 
-                // Horizontal Listed Registrations Items mapping loop
-                if (user.registeredEvents.isEmpty()) {
+                // List content ab role ke hisaab se
+                val displayList = if (isCreatorRole) state.createdEvents else user.registeredEvents
+
+                if (state.isLoadingCreatedEvents && isCreatorRole) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(20.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = Color(0xFF1A237E))
+                        }
+                    }
+                } else if (displayList.isEmpty()) {
                     item {
                         Column(
                             modifier = Modifier
@@ -240,18 +261,17 @@ fun ProfileScreen(
                         ) {
                             LottieAnimation(
                                 composition,
-                                modifier = Modifier
-                                    .size(150.dp),
+                                modifier = Modifier.size(150.dp),
                             )
                             Text(
-                                text = "You haven't register yet to any event.",
+                                text = if (isCreatorRole) "You haven't created any events yet." else "You haven't register yet to any event.",
                                 fontSize = 12.sp,
                                 color = Color.Gray
                             )
                         }
                     }
                 } else {
-                    items(user.registeredEvents) { event ->
+                    items(displayList) { event ->
                         RegisteredEventItem(event = event, onEventClick = onEventClick)
                     }
                 }
@@ -265,8 +285,12 @@ fun ProfileScreen(
                             .padding(horizontal = 20.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        UtilityRow(title = "Settings", icon = Icons.Default.Settings)
-                        UtilityRow(title = "Help & Support", icon = Icons.Default.HelpOutline)
+                        UtilityRow(title = "Settings", icon = Icons.Default.Settings, onClick = {
+                            android.widget.Toast.makeText(context, "Coming soon", android.widget.Toast.LENGTH_SHORT).show()
+                        })
+                        UtilityRow(title = "Help & Support", icon = Icons.Default.HelpOutline, onClick = {
+                            android.widget.Toast.makeText(context, "Coming soon", android.widget.Toast.LENGTH_SHORT).show()
+                        })
                     }
                 }
 
@@ -276,7 +300,7 @@ fun ProfileScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { viewModel.logout() }
+                            .clickable { showLogoutSheet = true }
                             .padding(vertical = 12.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
@@ -296,6 +320,84 @@ fun ProfileScreen(
                         )
                     }
                     Spacer(modifier = Modifier.height(24.dp))
+                }
+            }
+        }
+    }
+
+    // --- LOGOUT CONFIRMATION BOTTOM SHEET ---
+    if (showLogoutSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showLogoutSheet = false },
+            sheetState = logoutSheetState
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(Color(0xFFFEE2E2), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Logout,
+                        contentDescription = null,
+                        tint = Color(0xFFDC2626),
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Logout from account?",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF111827)
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = "You'll need to sign in again to access your events.",
+                    fontSize = 13.sp,
+                    color = Color.Gray
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Button(
+                    onClick = {
+                        scope.launch {
+                            logoutSheetState.hide()
+                            showLogoutSheet = false
+                            viewModel.logout()   // ✅ actual logout ab yahan hoga
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Yes, Logout", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedButton(
+                    onClick = { showLogoutSheet = false },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Cancel", fontWeight = FontWeight.Medium, color = Color.DarkGray)
                 }
             }
         }
@@ -390,7 +492,11 @@ fun RegisteredEventItem(event: EventSummary, onEventClick: (String) -> Unit) {
                         modifier = Modifier.size(12.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = event.date, fontSize = 12.sp, color = Color.Gray)
+                    Text(
+                        text = DateTimeValue.fromIso(event.startDateTime).display(),
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
                 }
                 Spacer(modifier = Modifier.height(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -401,7 +507,11 @@ fun RegisteredEventItem(event: EventSummary, onEventClick: (String) -> Unit) {
                         modifier = Modifier.size(12.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = event.venue, fontSize = 12.sp, color = Color.Gray, maxLines = 1)
+                    Text(
+                        text = event.venue
+                            ?: if (event.eventMode == "ONLINE") "Online Event" else "Venue TBA",
+                        fontSize = 12.sp, color = Color.Gray, maxLines = 1
+                    )
                 }
             }
             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0xFF1A237E))
@@ -410,9 +520,11 @@ fun RegisteredEventItem(event: EventSummary, onEventClick: (String) -> Unit) {
 }
 
 @Composable
-fun UtilityRow(title: String, icon: ImageVector) {
+fun UtilityRow(title: String, icon: ImageVector, onClick: () -> Unit = {}) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {

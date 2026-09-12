@@ -2,6 +2,7 @@ package com.david.collegeevents.data.remote
 
 import com.david.collegeevents.data.remote.dto.AuthResponseDto
 import com.david.collegeevents.data.remote.dto.CreateEventRequest
+import com.david.collegeevents.data.remote.dto.CreateEventResponseDto
 import com.david.collegeevents.data.remote.dto.EventDTOs
 import com.david.collegeevents.data.remote.dto.EventDetailDto
 import com.david.collegeevents.data.remote.dto.GenericErrorDto
@@ -56,10 +57,21 @@ interface ApiServices {
         @Path("imageName") imageName: String
     ): Response<Map<String, String>>
 
+    @Multipart
+    @POST("files/upload")
+    suspend fun uploadEventDocument(
+        @Part file: MultipartBody.Part
+    ): Response<ImageUploadResponse>   // agar FileUploadResponse alag DTO hai to woh naam bata dena
+
+    @DELETE("files/delete")
+    suspend fun deleteEventDocument(
+        @Query("url") fileUrl: String
+    ): Response<GenericErrorDto>
+
     @POST("api/events")
     suspend fun createNewEvent(
         @Body request: CreateEventRequest
-    ): Response<GenericErrorDto>
+    ): Response<CreateEventResponseDto>
 
     @PUT("api/events/{id}")
     suspend fun updateExistingEvent(

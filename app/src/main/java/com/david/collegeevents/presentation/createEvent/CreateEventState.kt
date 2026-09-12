@@ -1,26 +1,13 @@
 package com.david.collegeevents.presentation.createEvent
 
-/*
-data class CreateEventState(
-    val isUploadingBanner: Boolean = false,
-    val uploadedBannerUrl: String? = null,
-    val isPublishingEvent: Boolean = false,
-    val errorMessage: String? = null,
-    val executionSuccess: Boolean = false
-)*/
+import com.david.collegeevents.domain.model.EventDetail
 
 data class CreateEventState(
-    val isUploadingBanner: Boolean = false,
-    val uploadedBannerUrl: String? = null,
     val isPublishingEvent: Boolean = false,
+    val publishingStage: String? = null,
     val executionSuccess: Boolean = false,
     val errorMessage: String? = null,
+
     val isLoadingEvent: Boolean = false,
-    val prefillTitle: String? = null,
-    val prefillClub: String? = null,
-    val prefillDate: String? = null,
-    val prefillTime: String? = null,
-    val prefillVenue: String? = null,
-    val prefillFee: String? = null,
-    val prefillDescription: String? = null,
+    val prefillEvent: EventDetail? = null   // edit-mode: poora object ek hi jagah
 )

@@ -31,40 +31,52 @@ class AdminEventRepositoryImpl @Inject constructor(
 
     override fun deleteImage(imageUrl: String): Flow<Resource<Boolean>> = flow {
         try {
-            // Extract file name from absolute path URL (e.g. http://.../uploads/banner_xyz.jpg -> banner_xyz.jpg)
             val imageName = imageUrl.substringAfterLast("/")
             if (imageName.isNotBlank() && !imageUrl.contains("unsplash.com")) {
                 api.deleteServerImage(imageName)
                 emit(Resource.Success(true))
             } else {
-                emit(Resource.Success(false)) // Skip if it's a mock stock photo URL
+                emit(Resource.Success(false))
             }
         } catch (e: Exception) {
             emit(Resource.Error("Failed to purge obsolete file asset from storage."))
         }
     }
 
-    override fun submitEvent(
-        title: String, club: String, banner: String, date: String,
-        time: String, venue: String, fee: String, description: String, category: String
-    ): Flow<Resource<String>> = flow {
+    override fun uploadDocument(filePart: MultipartBody.Part): Flow<Resource<String>> = flow {
         emit(Resource.Loading())
         try {
-            val payload = CreateEventRequest(
-                title,
-                club,
-                banner,
-                date,
-                time,
-                venue,
-                description,
-                100,
-                fee,
-                category
-            )
-            val response = api.createNewEvent(payload)
+            val response = api.uploadEventDocument(filePart)
+            if (response.isSuccessful && response.body() != null) {
+                emit(Resource.Success(response.body()!!.url))
+            } else {
+                val errorMsg = parseErrorBody(response.errorBody()?.string())
+                emit(Resource.Error(errorMsg))
+            }
+        } catch (e: Exception) {
+            emit(Resource.Error("Document upload connection failed."))
+        }
+    }
+
+    override fun deleteDocument(fileUrl: String): Flow<Resource<Boolean>> = flow {
+        try {
+            val response = api.deleteEventDocument(fileUrl)
             if (response.isSuccessful) {
-                emit(Resource.Success("Event published successfully!"))
+                emit(Resource.Success(true))
+            } else {
+                emit(Resource.Success(false))
+            }
+        } catch (e: Exception) {
+            emit(Resource.Error("Failed to purge document from storage."))
+        }
+    }
+
+    override fun submitEvent(request: CreateEventRequest): Flow<Resource<String>> = flow {
+        emit(Resource.Loading())
+        try {
+            val response = api.createNewEvent(request)
+            if (response.isSuccessful && response.body() != null) {
+                emit(Resource.Success(response.body()!!.id))   // 👈 ab actual event id return hota hai
             } else {
                 val errorMsg = parseErrorBody(response.errorBody()?.string())
                 emit(Resource.Error(errorMsg))
@@ -74,14 +86,10 @@ class AdminEventRepositoryImpl @Inject constructor(
         }
     }
 
-    override fun modifyEvent(
-        eventId: String, title: String, club: String, banner: String, date: String,
-        time: String, venue: String, fee: String, description: String, category: String
-    ): Flow<Resource<String>> = flow {
+    override fun modifyEvent(eventId: String, request: CreateEventRequest): Flow<Resource<String>> = flow {
         emit(Resource.Loading())
         try {
-            val payload = CreateEventRequest(title, club, banner, date, time, venue, description, 100, fee, category)
-            val response = api.updateExistingEvent(eventId, payload)
+            val response = api.updateExistingEvent(eventId, request)
             if (response.isSuccessful) {
                 emit(Resource.Success("Event updated safely!"))
             } else {

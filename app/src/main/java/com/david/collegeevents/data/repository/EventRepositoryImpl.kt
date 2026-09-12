@@ -27,10 +27,12 @@ class EventRepositoryImpl @Inject constructor(
                         title = dto.title,
                         clubName = dto.clubName,
                         bannerUrl = dto.bannerUrl,
-                        date = dto.date,
-                        time = dto.time,
+                        startDateTime = dto.startDateTime,
+                        endDateTime = dto.endDateTime,
+                        eventMode = dto.eventMode,
                         venue = dto.venue,
-                        registrationBadge = dto.registrationBadge
+                        registrationBadge = dto.registrationBadge,
+                        createdBy = dto.createdBy
                     )
                 }
                 emit(Resource.Success(domainEvents))

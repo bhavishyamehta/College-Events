@@ -7,20 +7,28 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.david.collegeevents.data.remote.dto.CreateEventRequest
+import com.david.collegeevents.data.remote.dto.DocumentDto
 import com.david.collegeevents.domain.repository.AdminEventRepository
 import com.david.collegeevents.domain.repository.EventDetailsRepository
 import com.david.collegeevents.utils.Resource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import java.io.File
 import javax.inject.Inject
+
+// Documents jo abhi local device pe pade hain, upload hone baaki hai
+data class PendingDocument(
+    val localUri: Uri,
+    val docType: String,
+    val fileName: String
+)
 
 @HiltViewModel
 class CreateEventViewModel @Inject constructor(
@@ -35,146 +43,112 @@ class CreateEventViewModel @Inject constructor(
     private val _event = MutableSharedFlow<CreateEventUiEvent>()
     val event = _event.asSharedFlow()
 
-    private var originalImageUrl: String? = null // Keeps track of garbage cleanup reference pointer
-
-    fun uploadBannerImage(uri: Uri) {
-        viewModelScope.launch {
-            try {
-                val file = fileFromUri(uri)
-                val requestBody = file.asRequestBody("image/*".toMediaTypeOrNull())
-                val multipartBody =
-                    MultipartBody.Part.createFormData("image", file.name, requestBody)
-
-                repository.uploadBanner(multipartBody).onEach { result ->
-                    state = when (result) {
-                        is Resource.Loading -> state.copy(
-                            isUploadingBanner = true,
-                            errorMessage = null
-                        )
-
-                        is Resource.Success -> {
-                            // 🔴 GARBAGE CLEANUP TRIGGER: If user changes image during EDIT mode, purge old one first
-                            originalImageUrl?.let { oldUrl ->
-                                repository.deleteImage(oldUrl).launchIn(viewModelScope)
-                            }
-                            state.copy(isUploadingBanner = false, uploadedBannerUrl = result.data)
-                        }
-
-                        is Resource.Error -> state.copy(
-                            isUploadingBanner = false,
-                            errorMessage = result.message
-                        )
-                    }
-                }.launchIn(this)
-            } catch (e: Exception) {
-                state = state.copy(
-                    isUploadingBanner = false,
-                    errorMessage = "Failed to parse local image stream."
-                )
-            }
-        }
-    }
-
     fun populateFieldsForEdit(existingEventId: String) {
         viewModelScope.launch {
-            eventDetailsRepository.getEventDetail(existingEventId).onEach { result ->
-                state = when (result) {
-                    is Resource.Loading -> state.copy(isLoadingEvent = true)
-                    is Resource.Success -> {
-                        val event = result.data!!
-                        originalImageUrl = event.bannerUrl
-                        state.copy(
-                            isLoadingEvent = false,
-                            uploadedBannerUrl = event.bannerUrl,
-                            prefillTitle = event.title,
-                            prefillClub = event.clubName,
-                            prefillDate = event.date,
-                            prefillTime = event.time,
-                            prefillVenue = event.venue,
-                            prefillFee = event.registrationFee,
-                            prefillDescription = event.description
-                        )
-                    }
-                    is Resource.Error -> state.copy(
-                        isLoadingEvent = false,
-                        errorMessage = result.message
-                    )
+            state = state.copy(isLoadingEvent = true)
+            when (val result = eventDetailsRepository.getEventDetail(existingEventId).first { it !is Resource.Loading }) {
+                is Resource.Success -> {
+                    state = state.copy(isLoadingEvent = false, prefillEvent = result.data)
                 }
-            }.launchIn(this)
+                is Resource.Error -> {
+                    state = state.copy(isLoadingEvent = false, errorMessage = result.message)
+                }
+                else -> Unit
+            }
         }
     }
 
-    fun saveOrUpdateForm(
-        eventId: String?, title: String, club: String, date: String, time: String,
-        venue: String, fee: String, description: String, category: String
+    /**
+     * Main submit function. Sequential flow:
+     * 1. Agar naya banner select hua hai (localUri != null) to sabse pehle upload karo
+     * 2. Agar naye documents pending hain to unko bhi upload karo
+     * 3. Fir poora CreateEventRequest object banao aur backend ko bhejo
+     */
+    fun submitEvent(
+        eventId: String?,
+        bannerLocalUri: Uri?,
+        existingBannerUrl: String?,
+        pendingDocuments: List<PendingDocument>,
+        existingDocuments: List<DocumentDto>,
+        buildRequest: (finalBannerUrl: String, finalDocuments: List<DocumentDto>) -> CreateEventRequest
     ) {
         viewModelScope.launch {
-            if (title.isBlank() || club.isBlank() || date.isBlank() || time.isBlank() || venue.isBlank() || description.isBlank()) {
-                _event.emit(CreateEventUiEvent.ShowToast("Please populate all mandatory metadata parameters fields."))
-                return@launch
-            }
-            if (state.uploadedBannerUrl.isNullOrBlank()) {
-                _event.emit(CreateEventUiEvent.ShowToast("Please upload an event banner poster image asset."))
+            state = state.copy(isPublishingEvent = true, errorMessage = null, publishingStage = "Uploading banner...")
+
+            // ── Step 1: Banner upload (sirf agar naya select hua hai) ─────────
+            val finalBannerUrl: String
+            if (bannerLocalUri != null) {
+                val uploadResult = uploadToServer(bannerLocalUri, "banner_upload", "image/*", isDocument = false)
+                if (uploadResult == null) {
+                    state = state.copy(isPublishingEvent = false, publishingStage = null, errorMessage = "Banner upload failed. Try again.")
+                    return@launch
+                }
+                finalBannerUrl = uploadResult
+            } else if (!existingBannerUrl.isNullOrBlank()) {
+                finalBannerUrl = existingBannerUrl
+            } else {
+                state = state.copy(isPublishingEvent = false, publishingStage = null, errorMessage = "Please select an event banner.")
                 return@launch
             }
 
-            val parsedFee = if (fee.trim().replace("$", "")
-                    .toDoubleOrNull() ?: 0.0 == 0.0
-            ) "Free" else fee.trim()
+            // ── Step 2: Pending documents upload (agar koi hai) ────────────────
+            val uploadedDocs = mutableListOf<DocumentDto>()
+            uploadedDocs.addAll(existingDocuments)
+
+            if (pendingDocuments.isNotEmpty()) {
+                state = state.copy(publishingStage = "Uploading documents (0/${pendingDocuments.size})...")
+                pendingDocuments.forEachIndexed { index, doc ->
+                    state = state.copy(publishingStage = "Uploading documents (${index + 1}/${pendingDocuments.size})...")
+                    val url = uploadToServer(doc.localUri, "doc_upload", "*/*", isDocument = true)
+                    if (url == null) {
+                        state = state.copy(isPublishingEvent = false, publishingStage = null, errorMessage = "Failed to upload '${doc.fileName}'. Try again.")
+                        return@launch
+                    }
+                    uploadedDocs.add(DocumentDto(docType = doc.docType, fileUrl = url, fileName = doc.fileName))
+                }
+            }
+
+            // ── Step 3: Create/Update event ─────────────────────────────────────
+            state = state.copy(publishingStage = if (eventId == null) "Creating event..." else "Saving changes...")
+            val request = buildRequest(finalBannerUrl, uploadedDocs)
 
             val flowResult = if (eventId == null) {
-                // Form entry CREATE path
-                repository.submitEvent(
-                    title.trim(),
-                    club.trim(),
-                    state.uploadedBannerUrl!!,
-                    date.trim(),
-                    time.trim(),
-                    venue.trim(),
-                    parsedFee,
-                    description.trim(),
-                    category
-                )
+                repository.submitEvent(request)
             } else {
-                // Form entry UPDATE path
-                repository.modifyEvent(
-                    eventId,
-                    title.trim(),
-                    club.trim(),
-                    state.uploadedBannerUrl!!,
-                    date.trim(),
-                    time.trim(),
-                    venue.trim(),
-                    parsedFee,
-                    description.trim(),
-                    category
-                )
+                repository.modifyEvent(eventId, request)
             }
 
-            flowResult.onEach { result ->
-                state = when (result) {
-                    is Resource.Loading -> state.copy(isPublishingEvent = true, errorMessage = null)
-                    is Resource.Success -> state.copy(
-                        isPublishingEvent = false,
-                        executionSuccess = true
-                    )
-
-                    is Resource.Error -> state.copy(
-                        isPublishingEvent = false,
-                        errorMessage = result.message
-                    )
+            when (val result = flowResult.first { it !is Resource.Loading }) {
+                is Resource.Success -> {
+                    state = state.copy(isPublishingEvent = false, publishingStage = null, executionSuccess = true)
                 }
-            }.launchIn(this)
+                is Resource.Error -> {
+                    state = state.copy(isPublishingEvent = false, publishingStage = null, errorMessage = result.message ?: "Failed to save event")
+                }
+                else -> Unit
+            }
         }
     }
 
-    private fun fileFromUri(uri: Uri): File {
+    // Banner ke liye repository.uploadBanner(), documents ke liye repository.uploadDocument()
+    private suspend fun uploadToServer(uri: Uri, tempPrefix: String, mimeType: String, isDocument: Boolean): String? {
+        return try {
+            val file = fileFromUri(uri, tempPrefix)
+            val requestBody = file.asRequestBody(mimeType.toMediaTypeOrNull())
+            val part = MultipartBody.Part.createFormData("file", file.name, requestBody)
+            val flow = if (isDocument) repository.uploadDocument(part) else repository.uploadBanner(part)
+            when (val result = flow.first { it !is Resource.Loading }) {
+                is Resource.Success -> result.data
+                else -> null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun fileFromUri(uri: Uri, prefix: String): File {
         val inputStream = application.contentResolver.openInputStream(uri)
-        val file = File.createTempFile(
-            "banner_form_cache",
-            ".jpg",
-            application.cacheDir
-        )
+        val file = File.createTempFile(prefix, ".tmp", application.cacheDir)
         inputStream?.use { input ->
             file.outputStream().use { output -> input.copyTo(output) }
         }

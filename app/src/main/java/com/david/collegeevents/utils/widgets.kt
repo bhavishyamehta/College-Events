@@ -15,6 +15,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 fun generateColorFromName(name: String): Color {
     val colors = listOf(
@@ -75,3 +79,67 @@ fun NameAvatar(
     }
 }
 
+data class DateTimeValue(
+    val dateMillis: Long? = null,
+    val hour: Int? = null,
+    val minute: Int? = null
+) {
+    val isComplete get() = dateMillis != null && hour != null && minute != null
+
+    fun toIso(): String? {
+        if (!isComplete) return null
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = dateMillis!!
+            set(Calendar.HOUR_OF_DAY, hour!!)
+            set(Calendar.MINUTE, minute!!)
+            set(Calendar.SECOND, 0)
+        }
+        val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+        return sdf.format(cal.time)
+    }
+
+    fun display(): String {
+        if (dateMillis == null) return ""
+        val dateSdf = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+        val dateStr = dateSdf.format(Date(dateMillis))
+        if (hour == null || minute == null) return dateStr
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+        }
+        val timeSdf = SimpleDateFormat("hh:mm a", Locale.getDefault())
+        return "$dateStr • ${timeSdf.format(cal.time)}"
+    }
+
+    companion object {
+        fun fromIso(iso: String?): DateTimeValue {
+            if (iso.isNullOrBlank()) return DateTimeValue()
+
+            // Backend se aane wale possible formats: with seconds ya without seconds
+            val patterns = arrayOf(
+                "yyyy-MM-dd'T'HH:mm",
+                "yyyy-MM-dd'T'HH:mm:ss"
+            )
+
+            for (pattern in patterns) {
+                try {
+                    val sdf = SimpleDateFormat(pattern, Locale.getDefault())
+                    sdf.isLenient = false
+                    val date = sdf.parse(iso)
+                    if (date != null) {
+                        val cal = Calendar.getInstance().apply { time = date }
+                        return DateTimeValue(
+                            dateMillis = cal.timeInMillis,
+                            hour = cal.get(Calendar.HOUR_OF_DAY),
+                            minute = cal.get(Calendar.MINUTE)
+                        )
+                    }
+                } catch (_: Exception) {
+                    // Agla pattern try karega
+                }
+            }
+
+            return DateTimeValue()
+        }
+    }
+}

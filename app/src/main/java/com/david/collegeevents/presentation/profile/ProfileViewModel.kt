@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.david.collegeevents.domain.usecase.GetUserProfileUseCase
+import com.david.collegeevents.domain.usecase.GetEventsUseCase
 import com.david.collegeevents.utils.Resource
 import com.david.collegeevents.utils.TokenManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -17,6 +18,7 @@ import javax.inject.Inject
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
     private val getUserProfileUseCase: GetUserProfileUseCase,
+    private val getAllEventsUseCase: GetEventsUseCase,   // ⚠️ existing event-list use case reuse kar rahe hain
     private val tokenManager: TokenManager
 ) : ViewModel() {
 
@@ -24,7 +26,20 @@ class ProfileViewModel @Inject constructor(
         private set
 
     init {
+        observeUserRole()
         getProfile()
+    }
+
+    private fun observeUserRole() {
+        viewModelScope.launch {
+            tokenManager.userRoleFlow.collect { role ->
+                state = state.copy(userRole = role)
+                // Role pata chalte hi, agar Teacher/Admin hai toh unke created events fetch karo
+                if (role == "TEACHER" || role == "ADMIN") {
+                    fetchCreatedEvents()
+                }
+            }
+        }
     }
 
     fun getProfile() {
@@ -37,9 +52,25 @@ class ProfileViewModel @Inject constructor(
         }.launchIn(viewModelScope)
     }
 
+    private fun fetchCreatedEvents() {
+        viewModelScope.launch {
+            getAllEventsUseCase(category = "All").onEach { result ->   // ✅ "All" pass karo, null nahi
+                state = when (result) {
+                    is Resource.Loading -> state.copy(isLoadingCreatedEvents = true)
+                    is Resource.Success -> {
+                        val currentUserName = state.profileData?.fullName
+                        val myEvents = result.data?.filter { it.createdBy == currentUserName } ?: emptyList()
+                        state.copy(isLoadingCreatedEvents = false, createdEvents = myEvents)
+                    }
+                    is Resource.Error -> state.copy(isLoadingCreatedEvents = false)
+                }
+            }.launchIn(this)
+        }
+    }
+
     fun logout() {
         viewModelScope.launch {
-            tokenManager.clearSession() // Local DataStore clear edge case triggered!
+            tokenManager.clearSession()
             state = state.copy(isLoggedOut = true)
         }
     }
