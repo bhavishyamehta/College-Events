@@ -110,7 +110,6 @@ class MainActivity : ComponentActivity() {
                 val showBottomBar = currentRoute in listOf("home", "profile")
                 val showTopBar = currentRoute == "home"
 
-                var selectedTab by remember { mutableStateOf("events") }
                 val userRole by tokenManager.userRoleFlow.collectAsState(initial = "STUDENT")
                 val showFabButton = userRole == "ADMIN" || userRole == "TEACHER"
 
@@ -267,9 +266,8 @@ class MainActivity : ComponentActivity() {
                         if (showBottomBar) {
                             NavigationBar(containerColor = Color.White) {
                                 NavigationBarItem(
-                                    selected = selectedTab == "events",
+                                    selected = currentRoute == "home",
                                     onClick = {
-                                        selectedTab = "events"
                                         navController.navigate("home") { launchSingleTop = true }
                                     },
                                     icon = {
@@ -286,9 +284,8 @@ class MainActivity : ComponentActivity() {
                                     )
                                 )
                                 NavigationBarItem(
-                                    selected = selectedTab == "profile",
+                                    selected = currentRoute == "profile",
                                     onClick = {
-                                        selectedTab = "profile"
                                         navController.navigate("profile") { launchSingleTop = true }
                                     },
                                     icon = {
