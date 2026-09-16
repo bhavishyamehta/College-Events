@@ -17,6 +17,7 @@ fun AuthTextField(
     value: String,
     onValueChange: (String) -> Modifier,
     label: String,
+    trailingIcon: @Composable (() -> Unit)? = null,
     isPassword: Boolean = false
 ) {
     OutlinedTextField(
@@ -31,6 +32,7 @@ fun AuthTextField(
             unfocusedBorderColor = Color.LightGray
         ),
         keyboardOptions = if (isPassword) KeyboardOptions(keyboardType = KeyboardType.Password) else KeyboardOptions.Default,
-        visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None
+        visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
+        trailingIcon = trailingIcon
     )
 }
